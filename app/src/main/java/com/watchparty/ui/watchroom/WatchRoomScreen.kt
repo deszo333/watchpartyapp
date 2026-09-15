@@ -17,17 +17,23 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.unit.sp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -230,33 +236,46 @@ fun WatchRoomScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // -- Gesture zones (Left: Brightness/-10s, Center: Tap toggle, Right: Volume/+10s) -----
-            Row(modifier = Modifier.fillMaxSize()) {
-                // Left Zone: Brightness & -10s Seek
-                Box(
-                    modifier = Modifier
-                        .weight(0.35f)
-                        .fillMaxSize()
-                        .pointerInput(roomState.isSelfHost) {
-                            detectTapGestures(
-                                onTap = {
-                                    pingControls()
-                                    controlsVisible = !controlsVisible
-                                },
-                                onDoubleTap = {
-                                    if (roomState.isSelfHost) {
-                                        val cur = viewModel.exoPlayer?.currentPosition ?: 0L
+            // -- Netflix-style Center & Screen Tap Surface --------------------------------------------------
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(roomState.isSelfHost) {
+                        detectTapGestures(
+                            onTap = {
+                                pingControls()
+                                controlsVisible = !controlsVisible
+                            },
+                            onDoubleTap = { offset ->
+                                if (roomState.isSelfHost) {
+                                    val width = size.width
+                                    val cur = viewModel.exoPlayer?.currentPosition ?: 0L
+                                    val dur = viewModel.exoPlayer?.duration ?: 0L
+                                    if (offset.x < width * 0.35f) {
                                         val newPos = (cur - 10_000L).coerceAtLeast(0L)
                                         viewModel.hostSeek(newPos)
-                                        skipFeedback = "⏪ -10s"
+                                        skipFeedback = "⏪ 10"
+                                        pingControls()
+                                    } else if (offset.x > width * 0.65f) {
+                                        val newPos = if (dur > 0L) (cur + 10_000L).coerceAtMost(dur) else cur + 10_000L
+                                        viewModel.hostSeek(newPos)
+                                        skipFeedback = "10 ⏩"
+                                        pingControls()
+                                    } else {
+                                        viewModel.hostPlayPause()
                                         pingControls()
                                     }
                                 }
-                            )
-                        }
-                        .pointerInput(Unit) {
-                            detectVerticalDragGestures { change, dragAmount ->
-                                change.consume()
+                            }
+                        )
+                    }
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures { change, dragAmount ->
+                            change.consume()
+                            val width = activity?.window?.decorView?.width ?: 1920
+                            val touchX = change.position.x
+                            if (touchX < width * 0.5f) {
+                                // Left side: Brightness
                                 val window = activity?.window
                                 val currentBrightness = window?.attributes?.screenBrightness?.let {
                                     if (it < 0f) 0.5f else it
@@ -267,57 +286,8 @@ fun WatchRoomScreen(
                                     screenBrightness = newBrightness
                                 }
                                 gestureHudMessage = "Brightness ${(newBrightness * 100).toInt()}%"
-                            }
-                        }
-                )
-
-                // Center Zone: Tap toggle / Double tap play-pause
-                Box(
-                    modifier = Modifier
-                        .weight(0.3f)
-                        .fillMaxSize()
-                        .pointerInput(roomState.isSelfHost) {
-                            detectTapGestures(
-                                onTap = {
-                                    pingControls()
-                                    controlsVisible = !controlsVisible
-                                },
-                                onDoubleTap = {
-                                    if (roomState.isSelfHost) {
-                                        viewModel.hostPlayPause()
-                                        pingControls()
-                                    }
-                                }
-                            )
-                        }
-                )
-
-                // Right Zone: Volume & +10s Seek
-                Box(
-                    modifier = Modifier
-                        .weight(0.35f)
-                        .fillMaxSize()
-                        .pointerInput(roomState.isSelfHost) {
-                            detectTapGestures(
-                                onTap = {
-                                    pingControls()
-                                    controlsVisible = !controlsVisible
-                                },
-                                onDoubleTap = {
-                                    if (roomState.isSelfHost) {
-                                        val cur = viewModel.exoPlayer?.currentPosition ?: 0L
-                                        val dur = viewModel.exoPlayer?.duration ?: 0L
-                                        val newPos = if (dur > 0L) (cur + 10_000L).coerceAtMost(dur) else cur + 10_000L
-                                        viewModel.hostSeek(newPos)
-                                        skipFeedback = "+10s ⏩"
-                                        pingControls()
-                                    }
-                                }
-                            )
-                        }
-                        .pointerInput(Unit) {
-                            detectVerticalDragGestures { change, dragAmount ->
-                                change.consume()
+                            } else {
+                                // Right side: Volume
                                 if (audioManager != null) {
                                     val direction = if (dragAmount < 0) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER
                                     audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0)
@@ -327,19 +297,19 @@ fun WatchRoomScreen(
                                 }
                             }
                         }
-                )
-            }
+                    }
+            )
         }
 
-        // -- Gesture HUD pill (Brightness, Volume, Skip) -----------------------
+        // -- Center Skip / HUD pill -------------------------------------------
         val activePill = skipFeedback ?: gestureHudMessage
         if (activePill != null) {
             Surface(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .padding(16.dp),
-                color = Color.Black.copy(alpha = 0.75f),
-                shape = RoundedCornerShape(20.dp),
+                color = Color.Black.copy(alpha = 0.8f),
+                shape = RoundedCornerShape(24.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
             ) {
                 Text(
@@ -361,30 +331,13 @@ fun WatchRoomScreen(
             }
         }
 
-        if (!cameraGranted || !micGranted) {
-            Text(
-                text = when {
-                    !cameraGranted && !micGranted -> "Camera and mic off"
-                    !cameraGranted -> "Camera off"
-                    else -> "Mic off"
-                },
-                color = Color.White.copy(alpha = 0.78f),
-                style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(16.dp)
-                    .background(Color.Black.copy(alpha = 0.46f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            )
-        }
-
         // -- Floating camera tiles --------------------------------------------------
         val sharedEglBase = viewModel.eglBase
         if (sharedEglBase != null && remoteVideoTracks.isNotEmpty()) {
             Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(12.dp)
+                    .padding(top = if (controlsVisible) 56.dp else 12.dp, end = 12.dp)
                     .widthIn(max = 376.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -398,139 +351,244 @@ fun WatchRoomScreen(
             }
         }
 
-        // -- Custom controls (fade after 3s inactivity) --------------------------------------------------
+        // -- Netflix-Style Full Controls Overlay --------------------------------------------------
         AnimatedVisibility(
             visible = controlsVisible,
             enter = fadeIn(),
             exit = fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+            modifier = Modifier.fillMaxSize()
         ) {
-            Column(
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF08080C).copy(alpha = 0.88f))
-                    .padding(16.dp)
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.Black.copy(alpha = 0.75f),
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.85f)
+                            )
+                        )
+                    )
             ) {
-                // -- Scrubber / Progress bar ------------------------------------------
-                val displayPos = if (isScrubbing) scrubPositionMs else currentPositionMs
-                val displayDur = totalDurationMs
-                val sliderProgress = if (displayDur > 0L) {
-                    (displayPos.toFloat() / displayDur.toFloat()).coerceIn(0f, 1f)
-                } else 0f
-
-                Slider(
-                    value = sliderProgress,
-                    onValueChange = { frac ->
-                        if (roomState.isSelfHost && displayDur > 0L) {
-                            isScrubbing = true
-                            scrubPositionMs = (frac * displayDur).toLong()
-                            pingControls()
-                        }
-                    },
-                    onValueChangeFinished = {
-                        if (roomState.isSelfHost && displayDur > 0L) {
-                            viewModel.hostSeek(scrubPositionMs)
-                            currentPositionMs = scrubPositionMs
-                            isScrubbing = false
-                            pingControls()
-                        }
-                    },
-                    enabled = roomState.isSelfHost && displayDur > 0L,
-                    colors = SliderDefaults.colors(
-                        thumbColor = MaterialTheme.colorScheme.primary,
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                        inactiveTrackColor = Color.White.copy(alpha = 0.22f)
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-
+                // TOP BAR
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 4.dp),
+                        .align(Alignment.TopStart)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        text = formatTime(displayPos),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.8f)
-                    )
-                    Text(
-                        text = if (displayDur > 0L) formatTime(displayDur) else "--:--",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.White.copy(alpha = 0.8f)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onLeave) {
+                            Text("←", color = Color.White, fontSize = 24.sp)
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "Earl's WatchParty",
+                                color = Color.White,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = "Room ${roomState.roomCode ?: ""} • ${if (roomState.isSelfHost) "Host" else "Guest"}",
+                                color = Color.White.copy(alpha = 0.6f),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (roomState.isSelfHost) {
+                            TextButton(onClick = { showUrlDialog = true; pingControls() }) {
+                                Text("Load Source", color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        IconButton(onClick = { chatVisible = !chatVisible; pingControls() }) {
+                            Text("Chat", color = Color.White)
+                        }
+                    }
                 }
 
+                // CENTER PLAY / PAUSE / SEEK BUTTONS (Netflix style)
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 32.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(40.dp)
                 ) {
-                    if (roomState.isSelfHost) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { viewModel.hostPlayPause(); pingControls() }) {
+                    // Rewind 10s
+                    IconButton(
+                        onClick = {
+                            if (roomState.isSelfHost) {
+                                val cur = viewModel.exoPlayer?.currentPosition ?: 0L
+                                viewModel.hostSeek((cur - 10_000L).coerceAtLeast(0L))
+                                skipFeedback = "⏪ 10"
+                                pingControls()
+                            }
+                        },
+                        enabled = roomState.isSelfHost,
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.5f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("⏪ 10", color = Color.White, fontSize = 13.sp)
+                            }
+                        }
+                    }
+
+                    // Main Big Play/Pause Button
+                    IconButton(
+                        onClick = {
+                            if (roomState.isSelfHost) {
+                                viewModel.hostPlayPause()
+                                pingControls()
+                            }
+                        },
+                        enabled = roomState.isSelfHost,
+                        modifier = Modifier.size(76.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.White.copy(alpha = 0.2f),
+                            border = androidx.compose.foundation.BorderStroke(1.5.dp, Color.White.copy(alpha = 0.6f)),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
                                 val playing = viewModel.exoPlayer?.isPlaying == true
                                 Icon(
                                     imageVector = if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                    contentDescription = null,
-                                    tint = Color.White
+                                    contentDescription = if (playing) "Pause" else "Play",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(44.dp)
                                 )
                             }
-                            TextButton(onClick = { showUrlDialog = true; pingControls() }) {
-                                Text("Source", color = MaterialTheme.colorScheme.primary)
-                            }
                         }
-                    } else {
-                        Text("Host controls playback", color = Color.White)
                     }
 
-                    Row {
-                        IconButton(onClick = { chatVisible = !chatVisible; pingControls() }) {
-                            Text("Chat", color = Color.White.copy(alpha = 0.88f))
-                        }
-                        IconButton(onClick = onLeave) {
-                            Text("Leave", color = Color.White.copy(alpha = 0.88f))
+                    // Forward 10s
+                    IconButton(
+                        onClick = {
+                            if (roomState.isSelfHost) {
+                                val cur = viewModel.exoPlayer?.currentPosition ?: 0L
+                                val dur = viewModel.exoPlayer?.duration ?: 0L
+                                val newPos = if (dur > 0L) (cur + 10_000L).coerceAtMost(dur) else cur + 10_000L
+                                viewModel.hostSeek(newPos)
+                                skipFeedback = "10 ⏩"
+                                pingControls()
+                            }
+                        },
+                        enabled = roomState.isSelfHost,
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.5f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("10 ⏩", color = Color.White, fontSize = 13.sp)
+                            }
                         }
                     }
                 }
 
-                if (subtitleTracks.isNotEmpty()) {
+                // BOTTOM CONTROLS & TIMELINE
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 16.dp)
+                ) {
+                    val displayPos = if (isScrubbing) scrubPositionMs else currentPositionMs
+                    val displayDur = totalDurationMs
+                    val sliderProgress = if (displayDur > 0L) {
+                        (displayPos.toFloat() / displayDur.toFloat()).coerceIn(0f, 1f)
+                    } else 0f
+
+                    // Netflix Timeline with red active track
+                    Slider(
+                        value = sliderProgress,
+                        onValueChange = { frac ->
+                            if (roomState.isSelfHost && displayDur > 0L) {
+                                isScrubbing = true
+                                scrubPositionMs = (frac * displayDur).toLong()
+                                pingControls()
+                            }
+                        },
+                        onValueChangeFinished = {
+                            if (roomState.isSelfHost && displayDur > 0L) {
+                                viewModel.hostSeek(scrubPositionMs)
+                                currentPositionMs = scrubPositionMs
+                                isScrubbing = false
+                                pingControls()
+                            }
+                        },
+                        enabled = roomState.isSelfHost && displayDur > 0L,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color(0xFFE50914), // Netflix red
+                            activeTrackColor = Color(0xFFE50914),
+                            inactiveTrackColor = Color.White.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Current time & total duration
+                        Text(
+                            text = "${formatTime(displayPos)} / ${if (displayDur > 0L) formatTime(displayDur) else "--:--"}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White.copy(alpha = 0.9f)
+                        )
+
+                        // Subtitle & Audio options
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("CC", color = Color.White)
-                            Switch(
-                                checked = subtitlesEnabled,
-                                onCheckedChange = viewModel::setSubtitlesEnabled
-                            )
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { subtitleMenuExpanded = true }) {
-                                val selectedLabel = subtitleTracks
-                                    .firstOrNull { it.id == selectedSubtitleTrackId }
-                                    ?.label ?: "Track"
-                                Text(selectedLabel, color = Color.White)
-                            }
-                            DropdownMenu(
-                                expanded = subtitleMenuExpanded,
-                                onDismissRequest = { subtitleMenuExpanded = false }
-                            ) {
-                                subtitleTracks.forEach { option ->
+                            if (subtitleTracks.isNotEmpty()) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.clickable { subtitleMenuExpanded = true }
+                                ) {
+                                    Text(
+                                        text = "Subtitles: ${subtitleTracks.firstOrNull { it.id == selectedSubtitleTrackId }?.label ?: "Off"}",
+                                        color = Color.White.copy(alpha = 0.85f),
+                                        fontSize = 12.sp
+                                    )
+                                }
+
+                                DropdownMenu(
+                                    expanded = subtitleMenuExpanded,
+                                    onDismissRequest = { subtitleMenuExpanded = false }
+                                ) {
                                     DropdownMenuItem(
-                                        text = { Text(option.label) },
+                                        text = { Text("Off") },
                                         onClick = {
-                                            viewModel.selectSubtitleTrack(option.id)
+                                            viewModel.setSubtitlesEnabled(false)
                                             subtitleMenuExpanded = false
                                         }
                                     )
+                                    subtitleTracks.forEach { option ->
+                                        DropdownMenuItem(
+                                            text = { Text(option.label) },
+                                            onClick = {
+                                                viewModel.setSubtitlesEnabled(true)
+                                                viewModel.selectSubtitleTrack(option.id)
+                                                subtitleMenuExpanded = false
+                                            }
+                                        )
+                                    }
                                 }
-                            }
-                            TextButton(onClick = { subtitleStyle = subtitleStyle.next() }) {
-                                Text(subtitleStyle.label, color = Color.White)
                             }
                         }
                     }

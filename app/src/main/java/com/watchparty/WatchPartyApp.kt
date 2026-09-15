@@ -21,7 +21,8 @@ class WatchPartyApp : Application() {
         private const val PREFS_NAME = "watch_party_prefs"
         private const val KEY_SERVER_URL = "signaling_server_url"
 
-        // Default to Android Emulator loopback; local LAN or custom URLs can be chosen in settings
+        // Live deployed cloud server (Render)
+        const val DEFAULT_CLOUD_URL = "wss://watchpartyapp-5kwx.onrender.com"
         const val DEFAULT_EMULATOR_URL = "ws://10.0.2.2:8080"
         const val DEFAULT_LAN_URL = "ws://192.168.100.17:8080"
 
@@ -30,7 +31,7 @@ class WatchPartyApp : Application() {
         }
 
         var serverUrl: String
-            get() = prefs.getString(KEY_SERVER_URL, DEFAULT_EMULATOR_URL) ?: DEFAULT_EMULATOR_URL
+            get() = prefs.getString(KEY_SERVER_URL, DEFAULT_CLOUD_URL) ?: DEFAULT_CLOUD_URL
             set(value) {
                 prefs.edit().putString(KEY_SERVER_URL, value.trim()).apply()
             }

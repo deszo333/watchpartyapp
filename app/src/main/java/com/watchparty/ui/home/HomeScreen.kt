@@ -251,16 +251,16 @@ fun HomeScreen(viewModel: RoomViewModel, onRoomEntered: () -> Unit) {
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
-                            onClick = { tempUrl = WatchPartyApp.DEFAULT_EMULATOR_URL },
-                            modifier = Modifier.weight(1f)
+                            onClick = { tempUrl = WatchPartyApp.DEFAULT_CLOUD_URL },
+                            modifier = Modifier.weight(1.2f)
                         ) {
-                            Text("Emulator\n10.0.2.2", fontSize = 11.sp, textAlign = TextAlign.Center)
+                            Text("Cloud (Live)\nRender", fontSize = 11.sp, textAlign = TextAlign.Center)
                         }
                         OutlinedButton(
                             onClick = { tempUrl = WatchPartyApp.DEFAULT_LAN_URL },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("LAN / Wi-Fi\n192.168.x", fontSize = 11.sp, textAlign = TextAlign.Center)
+                            Text("Local Wi-Fi\n192.168.x", fontSize = 11.sp, textAlign = TextAlign.Center)
                         }
                     }
 
